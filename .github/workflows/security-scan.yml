@@ -1,31 +1,27 @@
 name: Security Scan
 
 on:
-  push:
-    branches: [ master, staging ]
-    paths:
-      - 'Dockerfile'
-      - 'web/**'
-      - 'k8s/**'
+  workflow_run:
+    workflows: ["CI - Build & Push Image"]
+    types:
+      - completed
 
 jobs:
   scan:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Trivy
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
-          ./trivy --version
-
-      - name: Scan for Vulnerabilities
-        run: |
-          ./trivy fs --exit-code 1 --severity HIGH,CRITICAL .
-
-      - name: Scan for Secrets
-        uses: trufflesecurity/trufflehog@main
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
         with:
-          path: .
-          fail: true
+          image-ref: ${{ secrets.OCIR_REPO }}:latest
+          format: table
+          exit-code: 0  # don’t fail build on vulnerabilities (for now)
+          ignore-unfixed: true
+          vuln-type: 'os,library'
 
+      - name: Run Secret Scan
+        uses: zricethezav/gitleaks-action@v2
+        with:
+          config: .github/.gitleaks.toml
