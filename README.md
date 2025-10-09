@@ -1,5 +1,4 @@
 # BSFC Application
-
 This repository contains the **CI/CD pipeline**, **Kubernetes manifests**, and **Docker image** configuration for the BSFC application deployed to **Oracle OKE** via a secure Bastion tunnel.
 
 ## Folder Structure
