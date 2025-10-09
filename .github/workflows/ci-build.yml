@@ -1,0 +1,44 @@
+name: CI - Build & Push Image
+
+on:
+  push:
+    branches: [ master, staging ]
+    paths:
+      - 'Dockerfile'
+      - 'web/**'
+      - 'k8s/**'
+  pull_request:
+    branches: [ master, staging ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      OCI_REGION: ${{ secrets.OCI_CLI_REGION }}
+      OCIR_HOST: ${{ secrets.OCIR_HOST }}
+      OCIR_REPO: ${{ secrets.OCIR_REPO }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint YAML & Dockerfile
+        run: |
+          pip install yamllint hadolint
+          yamllint k8s/
+          hadolint Dockerfile
+
+      - name: Build & Tag Docker Image
+        run: |
+          set -euxo pipefail
+          IMAGE_TAG="build-${GITHUB_RUN_NUMBER}"
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          docker build -t "$OCIR_REPO:$IMAGE_TAG" .
+          docker tag "$OCIR_REPO:$IMAGE_TAG" "$OCIR_REPO:latest"
+
+      - name: Push Image to OCIR
+        run: |
+          set -euxo pipefail
+          echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login "$OCIR_HOST" -u "${{ secrets.OCI_USERNAME }}" --password-stdin
+          docker push "$OCIR_REPO:$IMAGE_TAG"
+          docker push "$OCIR_REPO:latest"
+

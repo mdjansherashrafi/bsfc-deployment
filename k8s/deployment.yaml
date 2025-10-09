@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bsfc
+  namespace: bsfc-dev
+  labels:
+    app: bsfc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bsfc
+  template:
+    metadata:
+      labels:
+        app: bsfc
+    spec:
+      imagePullSecrets:
+        - name: ocir-secret
+      containers:
+        - name: bsfc
+          image: IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+
