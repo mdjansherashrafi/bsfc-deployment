@@ -2,26 +2,121 @@ name: Security Scan
 
 on:
   workflow_run:
-    workflows: ["CI - Build & Push Image"]
+    workflows: ["cd-deploy-oke.yml"]   # 👈 Must match your deploy workflow name
     types:
       - completed
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
-  scan:
-    runs-on: ubuntu-latest
+  security-scan:
+    name: Vulnerability & Secret Scan (with Policy Enforcement)
+    runs-on: ubuntu-22.04
+
     steps:
-      - uses: actions/checkout@v4
+      # 🧾 Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      # 🔢 Derive same image tag as deployment
+      - name: Set Image Reference
+        run: |
+          BUILD_NUMBER=${{ github.run_number }}
+          IMAGE_TAG="build-${BUILD_NUMBER}"
+          IMAGE="${{ secrets.OCIR_REPO }}:${IMAGE_TAG}"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "🔗 Scanning image: $IMAGE"
+
+      # 🔐 Login to OCIR (optional, needed if private)
+      - name: Login to OCIR
+        run: echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login ${{ secrets.OCIR_HOST }} -u "${{ secrets.OCI_USERNAME }}" --password-stdin
+
+      # 🧰 Install Trivy
+      - name: Install Trivy
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -y
+          sudo apt-get install -y trivy
+
+      # 🔍 Run Trivy scan and enforce thresholds
       - name: Run Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ secrets.OCIR_REPO }}:latest
-          format: table
-          exit-code: 0  # don’t fail build on vulnerabilities (for now)
-          ignore-unfixed: true
-          vuln-type: 'os,library'
+        id: trivy
+        run: |
+          echo "🔎 Running vulnerability scan on image: $IMAGE"
+          trivy image --timeout 15m \
+                      --vuln-type os,library \
+                      --format json \
+                      --ignore-unfixed \
+                      --output trivy-report.json \
+                      --severity HIGH,CRITICAL \
+                      $IMAGE
 
-      - name: Run Secret Scan
+          # Count vulnerabilities
+          CRITICAL_COUNT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-report.json)
+          HIGH_COUNT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-report.json)
+
+          echo "CRITICAL vulnerabilities: $CRITICAL_COUNT"
+          echo "HIGH vulnerabilities: $HIGH_COUNT"
+
+          # Define your enforcement policy thresholds
+          MAX_HIGH=10
+
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "❌ Policy violation: CRITICAL vulnerabilities found!"
+            exit 1
+          elif [ "$HIGH_COUNT" -gt "$MAX_HIGH" ]; then
+            echo "❌ Policy violation: Too many HIGH vulnerabilities ($HIGH_COUNT > $MAX_HIGH)"
+            exit 1
+          else
+            echo "✅ Passed: Vulnerability thresholds within acceptable range."
+          fi
+
+          # Also create human-readable table
+          trivy image --timeout 15m \
+                      --severity HIGH,CRITICAL \
+                      --vuln-type os,library \
+                      --ignore-unfixed \
+                      --format table \
+                      $IMAGE | tee trivy-report.txt
+
+      # 📊 Upload Trivy Reports
+      - name: Upload Trivy Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-vulnerability-reports
+          path: |
+            trivy-report.json
+            trivy-report.txt
+
+      # 🔑 Run Gitleaks Secret Scan
+      - name: Run Gitleaks Secret Scan
+        id: gitleaks
         uses: zricethezav/gitleaks-action@v2
         with:
           config: .github/.gitleaks.toml
+        continue-on-error: true
+
+      # 📤 Upload Gitleaks Report
+      - name: Upload Gitleaks Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-secret-scan
+          path: gitleaks-report.json
+          if-no-files-found: ignore
+
+      # 🧾 Final Summary
+      - name: Security Scan Summary
+        if: always()
+        run: |
+          echo "🧠 Security Scan Summary:"
+          echo "- Scanned Image: $IMAGE"
+          echo "- Trivy Reports: trivy-vulnerability-reports (JSON + Table)"
+          echo "- Gitleaks Report: gitleaks-secret-scan"
+          echo "✅ Security Scan Completed!"
