@@ -7,8 +7,12 @@ name: CD - Deploy to OKE (via Bastion)
 #      - 'Dockerfile'
 #      - 'k8s/**'
 #      - '.github/workflows/**'
-
 on:
+  workflow_run:
+    workflows: ["CI - Build & Push Image"]   # 👈 must match name in ci-build.yml
+    types:
+      - completed
+      
   workflow_dispatch:
     inputs:
       environment:
@@ -125,23 +129,35 @@ jobs:
           
       - name: Set environment namespace
         run: |
-          if [[ "${{ github.event.inputs.environment }}" == "dev" ]]; then
-            echo "NAMESPACE=bsfc-dev" >> $GITHUB_ENV
-          elif [[ "${{ github.event.inputs.environment }}" == "uat" ]]; then
-            echo "NAMESPACE=bsfc-uat" >> $GITHUB_ENV
+          # 🔹 If triggered manually (workflow_dispatch)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ "${{ github.event.inputs.environment }}" == "dev" ]]; then
+              echo "NAMESPACE=bsfc-dev" >> $GITHUB_ENV
+            elif [[ "${{ github.event.inputs.environment }}" == "uat" ]]; then
+              echo "NAMESPACE=bsfc-uat" >> $GITHUB_ENV
+            else
+              echo "❌ Invalid environment selected!"
+              exit 1
+            fi
+            echo "🧭 Manual trigger: selected ${{ github.event.inputs.environment }} → $NAMESPACE"
+          
+          # 🔹 If triggered automatically (workflow_run)
+          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            if [[ "${GITHUB_REF_NAME}" == "dev" ]]; then
+              echo "NAMESPACE=bsfc-dev" >> $GITHUB_ENV
+            elif [[ "${GITHUB_REF_NAME}" == "uat" ]]; then
+              echo "NAMESPACE=bsfc-uat" >> $GITHUB_ENV
+            else
+              echo "❌ Unsupported branch ${GITHUB_REF_NAME}. Exiting."
+              exit 1
+            fi
+            echo "🧭 Auto trigger: branch ${GITHUB_REF_NAME} → $NAMESPACE"
+          
           else
-            echo "❌ Invalid environment selected!"
+            echo "❌ Unknown trigger type: ${{ github.event_name }}"
             exit 1
           fi
-          echo "🧭 Selected environment: $NAMESPACE"
-          
-      - name: Deploy to OKE
-        run: |
-          set -euxo pipefail
-          sed -i "s|IMAGE_PLACEHOLDER|${OCIR_REPO}:${IMAGE_TAG}|g" k8s/deployment.yaml
-          kubectl apply -n $NAMESPACE -f k8s/deployment.yaml
-          kubectl rollout status -n $NAMESPACE deploy/bsfc --timeout=180s
-          echo "✅ Deployment successful to namespace $NAMESPACE"
+
 
 
     #  - name: Deploy to OKE
