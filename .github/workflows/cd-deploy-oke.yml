@@ -1,12 +1,21 @@
 name: CD - Deploy to OKE (via Bastion)
 
+# on:
+#  push:
+#    branches: [ master ]
+#    paths:
+#      - 'Dockerfile'
+#      - 'k8s/**'
+#      - '.github/workflows/**'
+
 on:
-  push:
-    branches: [ master ]
-    paths:
-      - 'Dockerfile'
-      - 'k8s/**'
-      - '.github/workflows/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (dev or uat)"
+        required: true
+        default: "dev"
+
 
 jobs:
   deploy:
@@ -114,17 +123,17 @@ jobs:
             --kube-endpoint PRIVATE_ENDPOINT
           sed -i "s|${{ env.oke_private_ip }}|127.0.0.1|g" "$HOME/.kube/config"
           
-      - name: Determine target environment
+      - name: Set environment namespace
         run: |
-          if [[ "${GITHUB_REF_NAME}" == "dev" ]]; then
+          if [[ "${{ github.event.inputs.environment }}" == "dev" ]]; then
             echo "NAMESPACE=bsfc-dev" >> $GITHUB_ENV
-          elif [[ "${GITHUB_REF_NAME}" == "uat" ]]; then
+          elif [[ "${{ github.event.inputs.environment }}" == "uat" ]]; then
             echo "NAMESPACE=bsfc-uat" >> $GITHUB_ENV
           else
-            echo "❌ Unsupported branch ${GITHUB_REF_NAME}. Exiting."
+            echo "❌ Invalid environment selected!"
             exit 1
           fi
-          echo "🧭 Deploying to namespace: $NAMESPACE"
+          echo "🧭 Selected environment: $NAMESPACE"
           
       - name: Deploy to OKE
         run: |
