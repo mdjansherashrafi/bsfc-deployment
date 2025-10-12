@@ -9,7 +9,7 @@ name: CD - Deploy to OKE (via Bastion)
 #      - '.github/workflows/**'
 on:
   workflow_run:
-    workflows: ["CI - Build & Push Image"]   # 👈 must match name in ci-build.yml
+    workflows: ["CI - Build & Push Image"]   # 👈 must match the name in ci-build.yml
     types:
       - completed
       
