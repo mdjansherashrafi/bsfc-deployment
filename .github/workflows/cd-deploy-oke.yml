@@ -158,7 +158,13 @@ jobs:
             exit 1
           fi
 
-
+      - name: Deploy to OKE
+        run: |
+          set -euxo pipefail
+          sed -i "s|IMAGE_PLACEHOLDER|${OCIR_REPO}:${IMAGE_TAG}|g" k8s/deployment.yaml
+          kubectl apply -n $NAMESPACE -f k8s/deployment.yaml
+          kubectl rollout status -n $NAMESPACE deploy/bsfc --timeout=180s
+          echo "✅ Deployment successful to $NAMESPACE"
 
     #  - name: Deploy to OKE
     #   run: |
