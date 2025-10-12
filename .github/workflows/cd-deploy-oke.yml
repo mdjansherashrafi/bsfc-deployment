@@ -11,9 +11,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-22.04
-  #  environment:
-    #  name: production
-    #  url: https://<your-prod-app-url>  # optional
+ 
     env:
       OCI_REGION: ${{ secrets.OCI_CLI_REGION }}
       OCIR_HOST: ${{ secrets.OCIR_HOST }}
@@ -115,14 +113,35 @@ jobs:
             --token-version 2.0.0 \
             --kube-endpoint PRIVATE_ENDPOINT
           sed -i "s|${{ env.oke_private_ip }}|127.0.0.1|g" "$HOME/.kube/config"
-
+          
+      - name: Determine target environment
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == "dev" ]]; then
+            echo "NAMESPACE=bsfc-dev" >> $GITHUB_ENV
+          elif [[ "${GITHUB_REF_NAME}" == "uat" ]]; then
+            echo "NAMESPACE=bsfc-uat" >> $GITHUB_ENV
+          else
+            echo "❌ Unsupported branch ${GITHUB_REF_NAME}. Exiting."
+            exit 1
+          fi
+          echo "🧭 Deploying to namespace: $NAMESPACE"
+          
       - name: Deploy to OKE
         run: |
           set -euxo pipefail
           sed -i "s|IMAGE_PLACEHOLDER|${OCIR_REPO}:${IMAGE_TAG}|g" k8s/deployment.yaml
-          kubectl apply -f k8s/deployment.yaml
-          kubectl rollout status -n bsfc deploy/bsfc --timeout=180s
-          echo "✅ Deployment successful"
+          kubectl apply -n $NAMESPACE -f k8s/deployment.yaml
+          kubectl rollout status -n $NAMESPACE deploy/bsfc --timeout=180s
+          echo "✅ Deployment successful to namespace $NAMESPACE"
+
+
+    #  - name: Deploy to OKE
+    #   run: |
+    #    set -euxo pipefail
+    #      sed -i "s|IMAGE_PLACEHOLDER|${OCIR_REPO}:${IMAGE_TAG}|g" k8s/deployment.yaml
+    #     kubectl apply -f k8s/deployment.yaml
+    #      kubectl rollout status -n bsfc deploy/bsfc --timeout=180s
+    #      echo "✅ Deployment successful"
 
       - name: Cleanup Bastion Session
         if: always()
