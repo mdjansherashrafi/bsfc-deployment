@@ -2,7 +2,7 @@ name: Security Scan
 
 on:
   workflow_run:
-    workflows: ["cd-deploy-oke.yml"]   # 👈 Must match your deploy workflow name
+    workflows: ["CD - Deploy to OKE (via Bastion)"]
     types:
       - completed
 
