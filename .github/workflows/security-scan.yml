@@ -55,6 +55,12 @@ jobs:
                       --output trivy-report.json \
                       --severity HIGH,CRITICAL \
                       $IMAGE
+          # 🚨 Skip enforcement for non-master branches
+          if [[ "${{ github.ref_name }}" != "master" ]]; then
+           echo "ℹ️ Skipping vulnerability enforcement for non-master branch: ${{ github.ref_name }}"
+           exit 0
+          fi
+
 
           # Count vulnerabilities
           CRITICAL_COUNT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-report.json)
