@@ -118,17 +118,15 @@ jobs:
          sleep 10
 
 
-      # 🚪 Start SSH Tunnel
       - name: Start SSH Tunnel
         run: |
-          set -euxo pipefail
-          ssh -i "$HOME/.ssh/id_rsa" \
-              -o StrictHostKeyChecking=accept-new \
-              -fN -L 6443:${{ env.OKE_PRIVATE_IP }}:6443 \
-              "${{ env.SESSION_ID }}@${{ secrets.BASTION_HOST }}"
-          for i in {1..10}; do
-            nc -z 127.0.0.1 6443 && echo "✅ Tunnel active" && break || sleep 2
-          done
+         set -euxo pipefail
+         echo "Attempting SSH tunnel to Bastion host: ${{ secrets.BASTION_HOST }}"
+         ssh -vvv -i "$HOME/.ssh/id_rsa" \
+         -o StrictHostKeyChecking=accept-new \
+         -fN -L 6443:${{ env.OKE_PRIVATE_IP }}:6443 \
+         "${{ env.SESSION_ID }}@${{ secrets.BASTION_HOST }}"
+
 
       # ⚙️ Configure kubeconfig
       - name: Configure OKE kubeconfig
