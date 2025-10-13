@@ -52,7 +52,7 @@ jobs:
 
       # 🚀 Deploy to OKE via reusable workflow
       - name: Deploy to OKE (via Bastion)
-        uses: ./.github/workflows/cd-deploy-oke.yml
+        uses: mdjansherashrafi/bsfc-deployment/.github/workflows/cd-deploy-oke.yml@master
         with:
           environment: uat
         env:
