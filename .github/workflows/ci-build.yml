@@ -19,10 +19,17 @@ jobs:
       OCIR_REPO: ${{ secrets.OCIR_REPO }}
 
     steps:
-      # 🧾 Checkout code
       - uses: actions/checkout@v4
 
-      # 🏗️ Build Docker image
+      - name: Lint YAML & Dockerfile
+        run: |
+          set -euxo pipefail
+          pip install --user yamllint
+          wget -qO /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+          chmod +x /usr/local/bin/hadolint
+          yamllint k8s/
+          hadolint Dockerfile
+
       - name: Build & Tag Docker Image
         run: |
           set -euxo pipefail
@@ -31,7 +38,6 @@ jobs:
           docker build -t "$OCIR_REPO:$IMAGE_TAG" .
           docker tag "$OCIR_REPO:$IMAGE_TAG" "$OCIR_REPO:latest"
 
-      # 🔐 Login to OCIR and push image
       - name: Login & Push to OCIR
         run: |
           set -euxo pipefail
@@ -40,7 +46,6 @@ jobs:
           docker push "$OCIR_REPO:$IMAGE_TAG"
           docker push "$OCIR_REPO:latest"
 
-      # 🧾 Save image tag and upload as artifact
       - name: Save image tag to file
         run: echo "$IMAGE_TAG" > image-tag.txt
 
@@ -50,17 +55,18 @@ jobs:
           name: image-tag
           path: image-tag.txt
 
-      # 🚀 Deploy to OKE via reusable workflow
-      - name: Deploy to OKE (via Bastion)
-        uses: mdjansherashrafi/bsfc-deployment/.github/workflows/cd-deploy-oke.yml@master
-        with:
-          environment: uat
-        env:
-          BASTION_HOST: ${{ secrets.BASTION_HOST }}
-          BASTION_OCID: ${{ secrets.BASTION_OCID }}
-          OKE_CLUSTER_OCID: ${{ secrets.OKE_CLUSTER_OCID }}
-          OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
-          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
-          OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
-          OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
-          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
+  # 🚀 Reusable CD job (must be at top-level under jobs)
+  deploy:
+    uses: mdjansherashrafi/bsfc-deployment/.github/workflows/cd-deploy-oke.yml@master
+    needs: build         # Wait for CI build job to complete
+    with:
+      environment: uat
+    secrets:
+      BASTION_HOST: ${{ secrets.BASTION_HOST }}
+      BASTION_OCID: ${{ secrets.BASTION_OCID }}
+      OKE_CLUSTER_OCID: ${{ secrets.OKE_CLUSTER_OCID }}
+      OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
+      OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
+      OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
+      OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
+      OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
