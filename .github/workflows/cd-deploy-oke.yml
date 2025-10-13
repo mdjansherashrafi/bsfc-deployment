@@ -30,8 +30,9 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       OCI_REGION: ${{ secrets.OCI_CLI_REGION }}
-      OCIR_HOST: ${{ secrets.OCIR_HOST }}
-      OCIR_REPO: ${{ secrets.OCIR_REPO }}
+      # 🧠 Hardcode for now — replace with a GitHub secret later
+      OCIR_HOST: me-jeddah-1.ocir.io
+      OCIR_REPO: me-jeddah-1.ocir.io/ops/pipeline-test
 
     steps:
       # 🧾 Checkout code
@@ -91,63 +92,47 @@ jobs:
           EOF
           chmod 600 ~/.oci/config
 
+      # 🛡️ Create Bastion Port-Forwarding Session
       - name: Create Bastion Port-Forwarding Session
         run: |
-         set -euxo pipefail
-         mkdir -p ~/.ssh && chmod 700 ~/.ssh
-
-         # Generate deterministic key pair with correct OpenSSH format
-         ssh-keygen -t rsa -b 4096 -m PEM -f ~/.ssh/id_rsa -N ""
-         chmod 600 ~/.ssh/id_rsa
-         OKE_PRIVATE_IP=$(oci ce cluster get \
-         --cluster-id "${{ secrets.OKE_CLUSTER_OCID }}" \
-         --query 'data.endpoints."private-endpoint"' \
-         --raw-output | cut -d: -f1)
-         echo "OKE_PRIVATE_IP=$OKE_PRIVATE_IP" >> $GITHUB_ENV
-
-         # Use base64 to ensure no hidden characters
-          cat ~/.ssh/id_rsa.pub
+          set -euxo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keygen -t rsa -b 4096 -m PEM -f ~/.ssh/id_rsa -N ""
+          chmod 600 ~/.ssh/id_rsa
+          OKE_PRIVATE_IP=$(oci ce cluster get \
+            --cluster-id "${{ secrets.OKE_CLUSTER_OCID }}" \
+            --query 'data.endpoints."private-endpoint"' \
+            --raw-output | cut -d: -f1)
+          echo "OKE_PRIVATE_IP=$OKE_PRIVATE_IP" >> $GITHUB_ENV
           SESSION_ID=$(oci bastion session create-port-forwarding \
-          --bastion-id "${{ secrets.BASTION_OCID }}" \
-          --display-name "gh-oke-${{ inputs.environment }}-$(date +%s)" \
-          --ssh-public-key-file ~/.ssh/id_rsa.pub \
-          --target-private-ip "$OKE_PRIVATE_IP" \
-          --target-port 6443 \
-          --wait-for-state SUCCEEDED \
-          --query 'data.resources[0].identifier' \
-          --raw-output)
+            --bastion-id "${{ secrets.BASTION_OCID }}" \
+            --display-name "gh-oke-${{ inputs.environment }}-$(date +%s)" \
+            --ssh-public-key-file ~/.ssh/id_rsa.pub \
+            --target-private-ip "$OKE_PRIVATE_IP" \
+            --target-port 6443 \
+            --wait-for-state SUCCEEDED \
+            --query 'data.resources[0].identifier' \
+            --raw-output)
           echo "SESSION_ID=$SESSION_ID" >> $GITHUB_ENV
           echo "✅ Bastion session created: $SESSION_ID"
           sleep 10
-      - name: Verify Bastion session key
-        run: |
-         echo "🔎 Checking what OCI stored for SSH key"
-         oci bastion session get --session-id "${{ env.SESSION_ID }}" \
-         --query 'data."ssh-metadata"' --raw-output
-         echo "🔎 Local key fingerprint:"
-         ssh-keygen -lf ~/.ssh/id_rsa.pub
 
-
+      # 🚪 Start SSH Tunnel
       - name: Start SSH Tunnel
         run: |
-         set -euxo pipefail
-         echo "🔐 Using Bastion Host: ${{ secrets.BASTION_HOST }}"
-         echo "🔗 Using Session ID: ${{ env.SESSION_ID }}"
-         echo "🌐 Target OKE IP: ${{ env.OKE_PRIVATE_IP }}"
-
-         # Verbose SSH for debugging if still fails
+          set -euxo pipefail
+          echo "🔐 Using Bastion Host: ${{ secrets.BASTION_HOST }}"
           ssh -vvv -i "$HOME/.ssh/id_rsa" \
-          -o StrictHostKeyChecking=accept-new \
-          -fN -L 6443:${{ env.OKE_PRIVATE_IP }}:6443 \
-          "${{ env.SESSION_ID }}@${{ secrets.BASTION_HOST }}" || {
-           echo "❌ SSH tunnel failed. Checking Bastion session info..."
-           oci bastion session get --session-id "${{ env.SESSION_ID }}" || true
-           echo "🔎 If this fails again, verify that Bastion plugin is RUNNING on instance."
-           exit 1
-         }
-         for i in {1..10}; do
-         nc -z 127.0.0.1 6443 && echo "✅ Tunnel active" && break || sleep 2
-         done
+            -o StrictHostKeyChecking=accept-new \
+            -fN -L 6443:${{ env.OKE_PRIVATE_IP }}:6443 \
+            "${{ env.SESSION_ID }}@${{ secrets.BASTION_HOST }}" || {
+              echo "❌ SSH tunnel failed. Checking Bastion session info..."
+              oci bastion session get --session-id "${{ env.SESSION_ID }}" || true
+              exit 1
+            }
+          for i in {1..10}; do
+            nc -z 127.0.0.1 6443 && echo "✅ Tunnel active" && break || sleep 2
+          done
 
       # ⚙️ Configure kubeconfig
       - name: Configure OKE kubeconfig
@@ -163,17 +148,12 @@ jobs:
             --kube-endpoint PRIVATE_ENDPOINT
           sed -i "s|${{ env.OKE_PRIVATE_IP }}|127.0.0.1|g" ~/.kube/config
 
-      # 🧪 Test connection
+      # 🧪 Test connectivity
       - name: Test cluster connectivity
         run: |
-          set -euxo pipefail
           kubectl get nodes
 
-      # 🚀 Deploy workload
-      - name: Deploy to OKE
-        run: |
-          set -euxo pipefail
-      #   sed -i "s|IMAGE_PLACEHOLDER|${OCIR_REPO}:${IMAGE_TAG}|g" k8s/deployment.yaml
+      # 🧩 Replace image placeholder
       - name: Replace image placeholder
         run: |
           set -euxo pipefail
@@ -183,6 +163,10 @@ jobs:
           echo "=== Final deployment.yaml ==="
           cat k8s/deployment.yaml
 
+      # 🚀 Deploy workload
+      - name: Deploy workload
+        run: |
+          set -euxo pipefail
           kubectl apply -n $NAMESPACE -f k8s/deployment.yaml
           kubectl rollout status -n $NAMESPACE deploy/bsfc --timeout=180s
           echo "✅ Deployment successful to $NAMESPACE using ${OCIR_REPO}:${IMAGE_TAG}"
