@@ -34,51 +34,35 @@ jobs:
       OCIR_REPO: ${{ secrets.OCIR_REPO }}
 
     steps:
+      # 🧾 Checkout code
       - uses: actions/checkout@v4
 
+      # 📦 Download image-tag artifact
       - name: Download image tag artifact
         uses: actions/download-artifact@v4
         with:
           name: image-tag
 
+      # 🧠 Read image tag
       - name: Read image tag
         run: |
           IMAGE_TAG=$(cat image-tag.txt)
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-          echo "Using image: ${OCIR_REPO}:${IMAGE_TAG}"
+          echo "📦 Using image: ${OCIR_REPO}:${IMAGE_TAG}"
 
-
-      # 🧭 Determine target environment (auto or manual)
+      # 🧭 Determine namespace based on input
       - name: Set target namespace
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            if [[ "${{ github.event.inputs.environment }}" == "dev" ]]; then
-              echo "NAMESPACE=bsfc-dev" >> $GITHUB_ENV
-            elif [[ "${{ github.event.inputs.environment }}" == "uat" ]]; then
-              echo "NAMESPACE=bsfc-uat" >> $GITHUB_ENV
-            else
-              echo "❌ Invalid environment selected!"
-              exit 1
-            fi
-            echo "🧭 Manual trigger → $NAMESPACE"
-          
-          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            if [[ "${GITHUB_REF_NAME}" == "dev" ]]; then
-              echo "NAMESPACE=bsfc-dev" >> $GITHUB_ENV
-            elif [[ "${GITHUB_REF_NAME}" == "uat" ]]; then
-              echo "NAMESPACE=bsfc-uat" >> $GITHUB_ENV
-            else
-              echo "❌ Unsupported branch ${GITHUB_REF_NAME}. Exiting."
-              exit 1
-            fi
-            echo "🧭 Auto trigger → $NAMESPACE"
-          
+          if [[ "${{ inputs.environment }}" == "dev" ]]; then
+            echo "NAMESPACE=bsfc-dev" >> $GITHUB_ENV
+          elif [[ "${{ inputs.environment }}" == "uat" ]]; then
+            echo "NAMESPACE=bsfc-uat" >> $GITHUB_ENV
           else
-            echo "❌ Unknown trigger type: ${{ github.event_name }}"
-            exit 1
+            echo "❌ Invalid environment input"; exit 1
           fi
+          echo "🧭 Deploying to namespace: $NAMESPACE"
 
-      # ☁️ Install OCI CLI and kubectl
+      # ☁️ Install OCI CLI & kubectl
       - name: Install OCI CLI & kubectl
         run: |
           set -euxo pipefail
@@ -87,11 +71,10 @@ jobs:
           sudo ./install.sh --accept-all-defaults \
             --install-dir /usr/local/lib/oracle-cli \
             --exec-dir /usr/local/bin
-
           curl -fsSLo kubectl "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
           sudo install -m 0755 kubectl /usr/local/bin/kubectl
 
-      # 🔐 Configure OCI CLI credentials
+      # 🔐 Configure OCI credentials
       - name: Configure OCI CLI
         run: |
           set -euxo pipefail
@@ -108,71 +91,11 @@ jobs:
           EOF
           chmod 600 ~/.oci/config
 
-      # 🔐 Create Bastion Port Forwarding Session
-      - name: Create Bastion Port-Forwarding Session
-        run: |
-          set -euxo pipefail
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
-          chmod 600 ~/.ssh/id_rsa
-
-          OKE_PRIVATE_IP=$(oci ce cluster get \
-            --cluster-id "${{ secrets.OKE_CLUSTER_OCID }}" \
-            --query 'data.endpoints."private-endpoint"' \
-            --raw-output | cut -d: -f1)
-          echo "oke_private_ip=$OKE_PRIVATE_IP" >> $GITHUB_ENV
-
-          TS=$(date +%s)
-          SESSION_ID=$(oci bastion session create-port-forwarding \
-            --bastion-id "${{ secrets.BASTION_OCID }}" \
-            --display-name "gh-oke-${NAMESPACE}-${TS}" \
-            --ssh-public-key-file ~/.ssh/id_rsa.pub \
-            --target-private-ip "$OKE_PRIVATE_IP" \
-            --target-port 6443 \
-            --wait-for-state SUCCEEDED \
-            --query 'data.resources[0].identifier' \
-            --raw-output)
-          echo "bastion_session_ocid=$SESSION_ID" >> $GITHUB_ENV
-          sleep 5
-
-      # 🚪 Start SSH Tunnel
-      - name: Start SSH Tunnel
-        run: |
-          set -euxo pipefail
-          ssh -i "$HOME/.ssh/id_rsa" \
-              -o StrictHostKeyChecking=accept-new \
-              -fN -L 6443:${{ env.oke_private_ip }}:6443 \
-              "${{ env.bastion_session_ocid }}@${{ secrets.BASTION_HOST }}"
-          for i in {1..10}; do
-            nc -z 127.0.0.1 6443 && echo "✅ Tunnel active" && break || sleep 2
-          done
-
-      # ⚙️ Configure kubeconfig
-      - name: Configure OKE kubeconfig
-        run: |
-          set -euxo pipefail
-          mkdir -p "$HOME/.kube"
-          oci ce cluster create-kubeconfig \
-            --config-file "$HOME/.oci/config" \
-            --cluster-id "${{ secrets.OKE_CLUSTER_OCID }}" \
-            --file "$HOME/.kube/config" \
-            --region "${{ secrets.OCI_CLI_REGION }}" \
-            --token-version 2.0.0 \
-            --kube-endpoint PRIVATE_ENDPOINT
-          sed -i "s|${{ env.oke_private_ip }}|127.0.0.1|g" "$HOME/.kube/config"
-
-      # 🚀 Deploy to OKE
+      # 🚀 Deploy workload to OKE
       - name: Deploy to OKE
         run: |
           set -euxo pipefail
           sed -i "s|IMAGE_PLACEHOLDER|${OCIR_REPO}:${IMAGE_TAG}|g" k8s/deployment.yaml
           kubectl apply -n $NAMESPACE -f k8s/deployment.yaml
           kubectl rollout status -n $NAMESPACE deploy/bsfc --timeout=180s
-          echo "✅ Deployment successful to $NAMESPACE using image tag: ${IMAGE_TAG}"
-
-      # 🧹 Cleanup Bastion session
-      - name: Cleanup Bastion Session
-        if: always()
-        run: |
-          set -euxo pipefail
-          oci bastion session delete --session-id "${{ env.bastion_session_ocid }}" --force || true
+          echo "✅ Deployment successful to $NAMESPACE using ${OCIR_REPO}:${IMAGE_TAG}"
