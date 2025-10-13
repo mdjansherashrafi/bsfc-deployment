@@ -4,6 +4,7 @@ on:
   workflow_call:
     inputs:
       environment:
+        description: "Target environment (dev or uat)"
         required: true
         type: string
     secrets:
@@ -23,6 +24,7 @@ on:
         required: true
       OCI_CLI_FINGERPRINT:
         required: true
+
 
 
   # 🔹 Manual trigger with environment selector
@@ -45,11 +47,11 @@ jobs:
       # 🧾 Checkout the repo
       - uses: actions/checkout@v4
 
+
       # 📦 Download the image tag artifact produced by CI
       - uses: actions/download-artifact@v4
         with:
           name: image-tag
-          path: .
 
       # 📦 Read image tag into environment variable
       - name: Read image tag from artifact
