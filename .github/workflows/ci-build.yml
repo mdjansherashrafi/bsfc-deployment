@@ -55,10 +55,9 @@ jobs:
           name: image-tag
           path: image-tag.txt
 
-  # 🚀 Reusable CD job (must be at top-level under jobs)
   deploy:
+    needs: build
     uses: mdjansherashrafi/bsfc-deployment/.github/workflows/cd-deploy-oke.yml@master
-    needs: build         # Wait for CI build job to complete
     with:
       environment: uat
     secrets:
