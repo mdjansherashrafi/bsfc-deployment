@@ -3,7 +3,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: bsfc
-  namespace: bsfc-dev
   labels:
     app: bsfc
 spec:
