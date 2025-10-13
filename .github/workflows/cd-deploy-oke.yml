@@ -119,6 +119,14 @@ jobs:
           echo "SESSION_ID=$SESSION_ID" >> $GITHUB_ENV
           echo "✅ Bastion session created: $SESSION_ID"
           sleep 10
+      - name: Verify Bastion session key
+        run: |
+         echo "🔎 Checking what OCI stored for SSH key"
+         oci bastion session get --session-id "${{ env.SESSION_ID }}" \
+         --query 'data."ssh-metadata"' --raw-output
+         echo "🔎 Local key fingerprint:"
+         ssh-keygen -lf ~/.ssh/id_rsa.pub
+
 
       - name: Start SSH Tunnel
         run: |
