@@ -1,11 +1,29 @@
 name: CD - Deploy to OKE (via Bastion)
 
 on:
-  # 🔹 Auto trigger after CI build completes
-  workflow_run:
-    workflows: ["CI - Build & Push Image"]   # must match ci-build.yml name
-    types:
-      - completed
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+    secrets:
+      BASTION_HOST:
+        required: true
+      BASTION_OCID:
+        required: true
+      OKE_CLUSTER_OCID:
+        required: true
+      OCI_CLI_REGION:
+        required: true
+      OCI_CLI_KEY_CONTENT:
+        required: true
+      OCI_CLI_USER:
+        required: true
+      OCI_CLI_TENANCY:
+        required: true
+      OCI_CLI_FINGERPRINT:
+        required: true
+
 
   # 🔹 Manual trigger with environment selector
   workflow_dispatch:
