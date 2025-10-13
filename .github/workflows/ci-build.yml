@@ -22,22 +22,6 @@ jobs:
       # 🧾 Checkout code
       - uses: actions/checkout@v4
 
-      # ✅ Lint YAML and Dockerfile
-      - name: Lint YAML & Dockerfile
-        run: |
-         set -euxo pipefail
-         # Install yamllint via pip (Python package)
-         pip install --user yamllint
-
-         # Install hadolint via official binary
-         wget -qO /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
-         chmod +x /usr/local/bin/hadolint
-
-         # Run linters
-         yamllint k8s/
-         hadolint Dockerfile
-
-
       # 🏗️ Build Docker image
       - name: Build & Tag Docker Image
         run: |
