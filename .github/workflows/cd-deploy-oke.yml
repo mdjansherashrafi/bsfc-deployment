@@ -94,27 +94,29 @@ jobs:
       # 🔐 Create Bastion Port-Forwarding Session
       - name: Create Bastion Port-Forwarding Session
         run: |
-          set -euxo pipefail
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
-          chmod 600 ~/.ssh/id_rsa
+         set -euxo pipefail
+         mkdir -p ~/.ssh && chmod 700 ~/.ssh
+         ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+         chmod 600 ~/.ssh/id_rsa
 
-          OKE_PRIVATE_IP=$(oci ce cluster get \
-            --cluster-id "${{ secrets.OKE_CLUSTER_OCID }}" \
-            --query 'data.endpoints."private-endpoint"' \
-            --raw-output | cut -d: -f1)
-          echo "OKE_PRIVATE_IP=$OKE_PRIVATE_IP" >> $GITHUB_ENV
+         OKE_PRIVATE_IP=$(oci ce cluster get \
+         --cluster-id "${{ secrets.OKE_CLUSTER_OCID }}" \
+         --query 'data.endpoints."private-endpoint"' \
+         --raw-output | cut -d: -f1)
+         echo "OKE_PRIVATE_IP=$OKE_PRIVATE_IP" >> $GITHUB_ENV
 
           SESSION_ID=$(oci bastion session create-port-forwarding \
-            --bastion-id "${{ secrets.BASTION_OCID }}" \
-            --display-name "gh-oke-${{ inputs.environment }}-$(date +%s)" \
-            --ssh-public-key-file ~/.ssh/id_rsa.pub \
-            --target-private-ip "$OKE_PRIVATE_IP" \
-            --target-port 6443 \
-            --wait-for-state SUCCEEDED \
-            --query 'data.resources[0].identifier' \
-            --raw-output)
-          echo "SESSION_ID=$SESSION_ID" >> $GITHUB_ENV
+         --bastion-id "${{ secrets.BASTION_OCID }}" \
+         --display-name "gh-oke-${{ inputs.environment }}-$(date +%s)" \
+         --ssh-public-key-file ~/.ssh/id_rsa.pub \
+         --target-private-ip "$OKE_PRIVATE_IP" \
+         --target-port 6443 \
+         --wait-for-state SUCCEEDED \
+         --query 'data.resources[0].identifier' \
+         --raw-output)
+         echo "SESSION_ID=$SESSION_ID" >> $GITHUB_ENV
+         sleep 10
+
 
       # 🚪 Start SSH Tunnel
       - name: Start SSH Tunnel
