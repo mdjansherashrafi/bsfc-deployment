@@ -50,11 +50,12 @@ jobs:
           name: image-tag
           path: image-tag.txt
 
+      # 🚀 Call the deploy workflow directly (same run)
       - name: Deploy to OKE (via Bastion)
         uses: ./.github/workflows/cd-deploy-oke.yml
         with:
           environment: uat
-        env:
+        secrets:
           BASTION_HOST: ${{ secrets.BASTION_HOST }}
           BASTION_OCID: ${{ secrets.BASTION_OCID }}
           OKE_CLUSTER_OCID: ${{ secrets.OKE_CLUSTER_OCID }}
