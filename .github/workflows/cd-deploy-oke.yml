@@ -173,7 +173,16 @@ jobs:
       - name: Deploy to OKE
         run: |
           set -euxo pipefail
+      #   sed -i "s|IMAGE_PLACEHOLDER|${OCIR_REPO}:${IMAGE_TAG}|g" k8s/deployment.yaml
+      - name: Replace image placeholder
+        run: |
+          set -euxo pipefail
+          echo "DEBUG: OCIR_REPO=${OCIR_REPO}"
+          echo "DEBUG: IMAGE_TAG=${IMAGE_TAG}"
           sed -i "s|IMAGE_PLACEHOLDER|${OCIR_REPO}:${IMAGE_TAG}|g" k8s/deployment.yaml
+          echo "=== Final deployment.yaml ==="
+          cat k8s/deployment.yaml
+
           kubectl apply -n $NAMESPACE -f k8s/deployment.yaml
           kubectl rollout status -n $NAMESPACE deploy/bsfc --timeout=180s
           echo "✅ Deployment successful to $NAMESPACE using ${OCIR_REPO}:${IMAGE_TAG}"
