@@ -55,7 +55,7 @@ jobs:
         uses: ./.github/workflows/cd-deploy-oke.yml
         with:
           environment: uat
-        secrets:
+        env:
           BASTION_HOST: ${{ secrets.BASTION_HOST }}
           BASTION_OCID: ${{ secrets.BASTION_OCID }}
           OKE_CLUSTER_OCID: ${{ secrets.OKE_CLUSTER_OCID }}
