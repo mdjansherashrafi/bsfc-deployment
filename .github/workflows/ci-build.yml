@@ -7,8 +7,6 @@ on:
       - 'Dockerfile'
       - 'web/**'
       - 'k8s/**'
-  pull_request:
-    branches: [ master, staging ]
 
 jobs:
   build:
@@ -42,9 +40,7 @@ jobs:
             -u "${{ secrets.OCI_USERNAME }}" --password-stdin
           docker push "$OCIR_REPO:$IMAGE_TAG"
           docker push "$OCIR_REPO:latest"
-          docker images
 
-      # ✅ NEW STEP: Save image tag to file
       - name: Save image tag to file
         run: echo "$IMAGE_TAG" > image-tag.txt
 
@@ -54,17 +50,16 @@ jobs:
           name: image-tag
           path: image-tag.txt
 
-      # 🚀 Trigger deployment (calls reusable CD workflow)
       - name: Deploy to OKE (via Bastion)
         uses: ./.github/workflows/cd-deploy-oke.yml
         with:
           environment: uat
         env:
-           BASTION_HOST: ${{ secrets.BASTION_HOST }}
-           BASTION_OCID: ${{ secrets.BASTION_OCID }}
-           OKE_CLUSTER_OCID: ${{ secrets.OKE_CLUSTER_OCID }}
-           OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
-           OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
-           OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
-           OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
-           OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
+          BASTION_HOST: ${{ secrets.BASTION_HOST }}
+          BASTION_OCID: ${{ secrets.BASTION_OCID }}
+          OKE_CLUSTER_OCID: ${{ secrets.OKE_CLUSTER_OCID }}
+          OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
+          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
+          OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
+          OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
+          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
