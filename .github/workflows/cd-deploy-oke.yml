@@ -24,15 +24,13 @@ on:
         required: true
       OCI_CLI_FINGERPRINT:
         required: true
-
 jobs:
   deploy:
     runs-on: ubuntu-22.04
     env:
       OCI_REGION: ${{ secrets.OCI_CLI_REGION }}
-      # 🧠 Hardcode for now — replace with a GitHub secret later
-      OCIR_HOST: jed.ocir.io
-      OCIR_REPO: jed.ocir.io/fr9ckauowgwh/ops/pipeline-test
+      OCIR_HOST: ${{ secrets.OCIR_HOST }}
+      OCIR_REPO: ${{ secrets.OCIR_REPO }
 
     steps:
       # 🧾 Checkout code
