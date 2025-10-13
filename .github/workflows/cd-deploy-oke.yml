@@ -25,16 +25,6 @@ on:
       OCI_CLI_FINGERPRINT:
         required: true
 
-
-
-  # 🔹 Manual trigger with environment selector
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Target environment (dev or uat)"
-        required: true
-        default: "dev"
-
 jobs:
   deploy:
     runs-on: ubuntu-22.04
@@ -44,21 +34,19 @@ jobs:
       OCIR_REPO: ${{ secrets.OCIR_REPO }}
 
     steps:
-      # 🧾 Checkout the repo
       - uses: actions/checkout@v4
 
-
-      # 📦 Download the image tag artifact produced by CI
-      - uses: actions/download-artifact@v4
+      - name: Download image tag artifact
+        uses: actions/download-artifact@v4
         with:
           name: image-tag
 
-      # 📦 Read image tag into environment variable
-      - name: Read image tag from artifact
+      - name: Read image tag
         run: |
           IMAGE_TAG=$(cat image-tag.txt)
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-          echo "📦 Using image tag: $IMAGE_TAG"
+          echo "Using image: ${OCIR_REPO}:${IMAGE_TAG}"
+
 
       # 🧭 Determine target environment (auto or manual)
       - name: Set target namespace
