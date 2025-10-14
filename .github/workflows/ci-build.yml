@@ -69,3 +69,5 @@ jobs:
       OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
       OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
       OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
+      OCIR_HOST: ${{ secrets.OCIR_HOST }}
+      OCIR_REPO: ${{ secrets.OCIR_REPO }}
