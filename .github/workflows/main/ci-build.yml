@@ -1,0 +1,57 @@
+name: CI - Build & Push Image
+
+on:
+  push:
+    branches: [ master, staging ]
+    paths:
+      - 'Dockerfile'
+      - 'web/**'
+      - 'k8s/**'
+  pull_request:
+    branches: [ master, staging ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      OCI_REGION: ${{ secrets.OCI_CLI_REGION }}
+      OCIR_HOST: ${{ secrets.OCIR_HOST }}
+      OCIR_REPO: ${{ secrets.OCIR_REPO }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint YAML & Dockerfile
+        run: |
+          set -euxo pipefail
+          pip install --user yamllint
+          wget -qO /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+          chmod +x /usr/local/bin/hadolint
+          yamllint k8s/
+          hadolint Dockerfile
+
+      - name: Build & Tag Docker Image
+        run: |
+          set -euxo pipefail
+          IMAGE_TAG="${GITHUB_REF_NAME}-build-${GITHUB_RUN_NUMBER}"
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          docker build -t "$OCIR_REPO:$IMAGE_TAG" .
+          docker tag "$OCIR_REPO:$IMAGE_TAG" "$OCIR_REPO:latest"
+
+      - name: Login & Push to OCIR
+        run: |
+          set -euxo pipefail
+          echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login "$OCIR_HOST" \
+            -u "${{ secrets.OCI_USERNAME }}" --password-stdin
+          docker push "$OCIR_REPO:$IMAGE_TAG"
+          docker push "$OCIR_REPO:latest"
+
+      - name: Save image tag to file
+        run: echo "$IMAGE_TAG" > image-tag.txt
+
+      - name: Upload image tag artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-tag
+          path: image-tag.txt
+

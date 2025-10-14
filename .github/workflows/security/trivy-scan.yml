@@ -1,0 +1,46 @@
+name: Security Scan
+
+on:
+  workflow_run:
+    workflows:
+      - "CD - Deploy to OKE (via Bastion)"
+      - "CD-01 - Deploy to OKE (via Bastion)"
+    types:
+      - completed
+
+jobs:
+  trivy_scan:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image tag artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: image-tag
+        continue-on-error: true
+
+      - name: Determine image tag
+        run: |
+          if [ -f image-tag.txt ]; then
+            IMAGE_TAG=$(cat image-tag.txt)
+          else
+            IMAGE_TAG="latest"
+          fi
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "🔍 Scanning image: ${{ secrets.OCIR_REPO }}:$IMAGE_TAG"
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.55.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.55.0_Linux-64bit.deb
+
+      - name: Run Trivy scan
+        run: |
+          trivy image --severity HIGH,CRITICAL --no-progress \
+            "${{ secrets.OCIR_REPO }}:${IMAGE_TAG}"
+
