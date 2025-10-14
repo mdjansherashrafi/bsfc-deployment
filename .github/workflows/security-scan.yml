@@ -2,7 +2,9 @@ name: Security Scan
 
 on:
   workflow_run:
-    workflows: ["CD - Deploy to OKE (via Bastion)"]
+    workflows: 
+         - "CD - Deploy to OKE (via Bastion)"
+         - "CD-01 - Deploy to OKE (via Bastion)"
     types:
       - completed
 
