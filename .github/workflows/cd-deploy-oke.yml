@@ -8,6 +8,10 @@ on:
         required: true
         type: string
     secrets:
+      OCIR_HOST:
+        required: true
+      OCIR_REPO:
+        required: true
       BASTION_HOST:
         required: true
       BASTION_OCID:
