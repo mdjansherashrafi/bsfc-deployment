@@ -1,4 +1,4 @@
-name: CD - Deploy to OKE (via Bastion)
+name: CD-02 - Deploy to OKE (via Bastion)
 
 on:
   workflow_dispatch:
