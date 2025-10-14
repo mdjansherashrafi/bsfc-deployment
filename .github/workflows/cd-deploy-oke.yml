@@ -27,11 +27,10 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-22.04
-env:
-  OCI_REGION: ${{ secrets.OCI_CLI_REGION }}
-  OCIR_HOST: ${{ secrets.OCIR_HOST }}
-  OCIR_REPO: ${{ secrets.OCIR_REPO }}
-
+    env:
+      OCI_REGION: ${{ secrets.OCI_CLI_REGION }}
+      OCIR_HOST: ${{ secrets.OCIR_HOST }}
+      OCIR_REPO: ${{ secrets.OCIR_REPO }}
 
     steps:
       # 🧾 Checkout code
