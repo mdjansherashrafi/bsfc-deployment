@@ -1,6 +1,7 @@
 name: CD - Deploy to OKE (via Bastion)
 
 on:
+  # Existing reusable trigger (kept exactly as-is)
   workflow_call:
     inputs:
       environment:
@@ -28,6 +29,19 @@ on:
         required: true
       OCI_CLI_FINGERPRINT:
         required: true
+
+  # ✅ Added manual trigger for GitHub UI dropdown
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Select target environment to deploy"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - uat
+
 jobs:
   deploy:
     runs-on: ubuntu-22.04
@@ -40,28 +54,34 @@ jobs:
       # 🧾 Checkout code
       - uses: actions/checkout@v4
 
-      # 📦 Download image-tag artifact
+      # 📦 Download image-tag artifact (only if triggered by CI)
       - name: Download image tag artifact
+        if: ${{ github.event_name == 'workflow_call' }}
         uses: actions/download-artifact@v4
         with:
           name: image-tag
 
-      # 🧠 Read image tag
+      # 🧠 Read image tag (fallback to 'latest' for manual runs)
       - name: Read image tag
         run: |
-          IMAGE_TAG=$(cat image-tag.txt)
+          if [ -f image-tag.txt ]; then
+            IMAGE_TAG=$(cat image-tag.txt)
+          else
+            IMAGE_TAG="latest"
+          fi
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           echo "📦 Using image: ${OCIR_REPO}:${IMAGE_TAG}"
 
-      # 🧭 Determine namespace
+      # 🧭 Determine namespace dynamically
       - name: Set target namespace
         run: |
-          if [[ "${{ inputs.environment }}" == "dev" ]]; then
+          ENVIRONMENT=${{ github.event.inputs.environment || inputs.environment }}
+          if [[ "$ENVIRONMENT" == "dev" ]]; then
             echo "NAMESPACE=bsfc-dev" >> $GITHUB_ENV
-          elif [[ "${{ inputs.environment }}" == "uat" ]]; then
+          elif [[ "$ENVIRONMENT" == "uat" ]]; then
             echo "NAMESPACE=bsfc-uat" >> $GITHUB_ENV
           else
-            echo "❌ Invalid environment input"; exit 1
+            echo "❌ Invalid environment input: $ENVIRONMENT"; exit 1
           fi
           echo "🧭 Deploying to namespace: $NAMESPACE"
 
@@ -108,7 +128,7 @@ jobs:
           echo "OKE_PRIVATE_IP=$OKE_PRIVATE_IP" >> $GITHUB_ENV
           SESSION_ID=$(oci bastion session create-port-forwarding \
             --bastion-id "${{ secrets.BASTION_OCID }}" \
-            --display-name "gh-oke-${{ inputs.environment }}-$(date +%s)" \
+            --display-name "gh-oke-${{ github.event.inputs.environment || inputs.environment }}-$(date +%s)" \
             --ssh-public-key-file ~/.ssh/id_rsa.pub \
             --target-private-ip "$OKE_PRIVATE_IP" \
             --target-port 6443 \
@@ -124,7 +144,7 @@ jobs:
         run: |
           set -euxo pipefail
           echo "🔐 Using Bastion Host: ${{ secrets.BASTION_HOST }}"
-          ssh -vvv -i "$HOME/.ssh/id_rsa" \
+          ssh -i "$HOME/.ssh/id_rsa" \
             -o StrictHostKeyChecking=accept-new \
             -fN -L 6443:${{ env.OKE_PRIVATE_IP }}:6443 \
             "${{ env.SESSION_ID }}@${{ secrets.BASTION_HOST }}" || {
@@ -136,7 +156,7 @@ jobs:
             nc -z 127.0.0.1 6443 && echo "✅ Tunnel active" && break || sleep 2
           done
 
-      # ⚙️ Configure kubeconfig
+      # ⚙️ Configure OKE kubeconfig
       - name: Configure OKE kubeconfig
         run: |
           set -euxo pipefail
@@ -152,8 +172,7 @@ jobs:
 
       # 🧪 Test connectivity
       - name: Test cluster connectivity
-        run: |
-          kubectl get nodes
+        run: kubectl get nodes
 
       # 🧩 Replace image placeholder
       - name: Replace image placeholder
