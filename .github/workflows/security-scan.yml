@@ -57,8 +57,10 @@ jobs:
             echo "❌ No image tag found — please provide input or upload image-tag artifact."
             exit 1
           fi
-          echo "IMAGE=${{ secrets.OCIR_REPO }}:${IMAGE_TAG}" >> $GITHUB_ENV
-          echo "🔗 Scanning image: ${{ secrets.OCIR_REPO }}:${IMAGE_TAG}"
+
+          IMAGE="${{ secrets.OCIR_HOST }}/${{ secrets.OCIR_REPO }}:${IMAGE_TAG}"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "🔗 Scanning image: $IMAGE"
 
       # 🔐 Login to OCIR
       - name: Login to OCIR
@@ -70,21 +72,25 @@ jobs:
       - name: Install Trivy
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release jq
           wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
           echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
           sudo apt-get update -y
           sudo apt-get install -y trivy
 
-      # 🔍 Run Trivy scan
-      - name: Run Trivy manually
+      # 🔍 Run basic Trivy scan (table format)
+      - name: Run Trivy table scan
         run: |
-         trivy image --format table --severity HIGH,CRITICAL myimage:latest
+          echo "🧭 Quick table scan for visibility"
+          trivy image --format table --severity HIGH,CRITICAL $IMAGE
 
+      # 🧪 Run Trivy vulnerability scan with policy enforcement
       - name: Run Trivy vulnerability scan
         id: trivy
         run: |
           echo "🔎 Running vulnerability scan on image: $IMAGE"
+
+          # Generate JSON report
           trivy image --timeout 15m \
                       --vuln-type os,library \
                       --format json \
@@ -93,11 +99,14 @@ jobs:
                       --severity HIGH,CRITICAL \
                       $IMAGE
 
+          # Count vulnerabilities
           CRITICAL_COUNT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-report.json)
           HIGH_COUNT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-report.json)
+
           echo "CRITICAL vulnerabilities: $CRITICAL_COUNT"
           echo "HIGH vulnerabilities: $HIGH_COUNT"
 
+          # Policy enforcement
           if [ "$CRITICAL_COUNT" -gt 0 ]; then
             echo "❌ Policy violation: CRITICAL vulnerabilities found!"
             exit 1
@@ -108,6 +117,7 @@ jobs:
             echo "✅ Passed: Vulnerability thresholds within acceptable range."
           fi
 
+          # Create readable table report
           trivy image --timeout 15m \
                       --severity HIGH,CRITICAL \
                       --vuln-type os,library \
