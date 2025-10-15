@@ -104,8 +104,9 @@ jobs:
         run: |
          echo "🔐 Storing LAST_IMAGE_TAG for security scan..."
          gh variable set LAST_IMAGE_TAG --body "$IMAGE_TAG" --repo ${{ github.repository }}
-         env:
+        env:
          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
+
 
   # 🚀 Deploy job (reuse CD workflow)
   deploy:
