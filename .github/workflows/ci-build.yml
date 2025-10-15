@@ -129,3 +129,8 @@ jobs:
       OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
       OCIR_HOST: ${{ secrets.OCIR_HOST }}
       OCIR_REPO: ${{ secrets.OCIR_REPO }}
+  security-scan:
+    needs: deploy
+    uses: mdjansherashrafi/bsfc-deployment/.github/workflows/security-scan.yml@master
+    secrets: inherit
+
