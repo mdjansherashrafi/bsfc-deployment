@@ -19,8 +19,12 @@ jobs:
       OCIR_REPO: ${{ secrets.OCIR_REPO }}
 
     steps:
+      # 🧾 Checkout full repo (to fetch tags)
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed to access all git tags
 
+      # 🧪 Lint YAML & Dockerfile
       - name: Lint YAML & Dockerfile
         run: |
           set -euxo pipefail
@@ -30,14 +34,49 @@ jobs:
           yamllint k8s/
           hadolint Dockerfile
 
+      # 🧱 Build & Tag Docker Image (Auto-Version)
       - name: Build & Tag Docker Image
         run: |
           set -euxo pipefail
-          IMAGE_TAG="${GITHUB_REF_NAME}-build-${GITHUB_RUN_NUMBER}"
+
+          # Set timezone to KSA (UTC+3)
+          sudo timedatectl set-timezone Asia/Riyadh
+          
+          # Generate timestamp (KSA time)
+          TIMESTAMP=$(date +'%Y%m%d%H%M%S')
+
+          # Determine current branch
+          BRANCH=$(echo "${GITHUB_REF_NAME}" | tr '/' '-')
+
+          # Fetch latest tag (e.g., v1.0.9)
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+
+          # Extract version components
+          VERSION_BASE=$(echo "$LATEST_TAG" | sed 's/^v//')
+          MAJOR=$(echo "$VERSION_BASE" | cut -d. -f1)
+          MINOR=$(echo "$VERSION_BASE" | cut -d. -f2)
+          PATCH=$(echo "$VERSION_BASE" | cut -d. -f3)
+
+          # Auto-increment PATCH
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+
+          # Final image tag: v1.0.10-master-20251015174522
+          IMAGE_TAG="${NEW_VERSION}-${BRANCH}-${TIMESTAMP}"
+
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "🧩 Building image: $OCIR_REPO:$IMAGE_TAG"
+
           docker build -t "$OCIR_REPO:$IMAGE_TAG" .
           docker tag "$OCIR_REPO:$IMAGE_TAG" "$OCIR_REPO:latest"
 
+          # Optionally push new tag to GitHub
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag -a "$NEW_VERSION" -m "Automated build version $NEW_VERSION"
+          git push origin "$NEW_VERSION" || true
+
+      # 🔐 Login & Push to OCIR
       - name: Login & Push to OCIR
         run: |
           set -euxo pipefail
@@ -46,15 +85,18 @@ jobs:
           docker push "$OCIR_REPO:$IMAGE_TAG"
           docker push "$OCIR_REPO:latest"
 
+      # 🧾 Save image tag
       - name: Save image tag to file
         run: echo "$IMAGE_TAG" > image-tag.txt
 
+      # 📤 Upload image tag artifact
       - name: Upload image tag artifact
         uses: actions/upload-artifact@v4
         with:
           name: image-tag
           path: image-tag.txt
 
+  # 🚀 Deploy job (reuse CD workflow)
   deploy:
     needs: build
     uses: mdjansherashrafi/bsfc-deployment/.github/workflows/cd-deploy-oke.yml@master
