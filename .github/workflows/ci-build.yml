@@ -95,14 +95,18 @@ jobs:
         with:
           name: image-tag
           path: image-tag.txt
-          
-     
+
+      # 🧰 Install GitHub CLI (needed for repo variable)
+      - name: Install GitHub CLI
+        run: sudo apt-get update -y && sudo apt-get install -y gh
+
+      # 💾 Persist image tag for later workflows
       - name: Persist image tag for later workflows
-        run: gh variable set LAST_IMAGE_TAG --body "$IMAGE_TAG"
+        run: |
+          echo "🔐 Storing LAST_IMAGE_TAG for security scan..."
+          gh variable set LAST_IMAGE_TAG --body "$IMAGE_TAG"
         env:
-         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # 🚀 Deploy job (reuse CD workflow)
   deploy:
