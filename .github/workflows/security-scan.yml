@@ -66,6 +66,11 @@ jobs:
         run: |
           echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login ${{ secrets.OCIR_HOST }} \
             -u "${{ secrets.OCI_NAMESPACE }}/${{ secrets.OCI_USERNAME }}" --password-stdin
+      - name: Debug OCIR login
+        run: |
+         echo "🔍 Attempting login to ${{ secrets.OCIR_HOST }}"
+         echo "Username: ${{ secrets.OCI_NAMESPACE }}/${{ secrets.OCI_USERNAME }}"
+
 
 
         # 🧲 Pull image from OCIR before scanning
