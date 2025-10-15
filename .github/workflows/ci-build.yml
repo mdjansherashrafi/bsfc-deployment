@@ -96,10 +96,12 @@ jobs:
           name: image-tag
           path: image-tag.txt
           
-      - name: Persist image tag to repo variable
+     
+      - name: Persist image tag for later workflows
         run: gh variable set LAST_IMAGE_TAG --body "$IMAGE_TAG"
         env:
          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 
   # 🚀 Deploy job (reuse CD workflow)
