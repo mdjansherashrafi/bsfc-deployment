@@ -62,11 +62,18 @@ jobs:
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
           echo "🔗 Scanning image: $IMAGE"
 
-      # 🔐 Login to OCIR
       - name: Login to OCIR
         run: |
           echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login ${{ secrets.OCIR_HOST }} \
-            -u "${{ secrets.OCI_USERNAME }}" --password-stdin
+            -u "${{ secrets.OCI_NAMESPACE }}/${{ secrets.OCI_USERNAME }}" --password-stdin
+
+
+        # 🧲 Pull image from OCIR before scanning
+      - name: Pull image from OCIR
+        run: |
+          echo "🔐 Pulling image $IMAGE from OCIR..."
+          docker pull $IMAGE
+
 
       # 🧰 Install Trivy
       - name: Install Trivy
@@ -77,13 +84,6 @@ jobs:
           echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
           sudo apt-get update -y
           sudo apt-get install -y trivy
-               
-                
-      # 🧲 Pull image from OCIR before scanning
-      - name: Pull image from OCIR
-        run: |
-          echo "🔐 Pulling image $IMAGE from OCIR..."
-          docker pull $IMAGE
 
 
       # 🔍 Run basic Trivy scan (table format)
