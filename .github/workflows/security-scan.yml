@@ -62,10 +62,17 @@ jobs:
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
           echo "🔗 Scanning image: $IMAGE"
 
+      - name: Clear Docker credentials
+        run: docker logout ${{ secrets.OCIR_HOST }} || true
+
       - name: Login to OCIR
         run: |
-          echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login ${{ secrets.OCIR_HOST }} \
-            -u "${{ secrets.OCI_NAMESPACE }}/${{ secrets.OCI_USERNAME }}" --password-stdin
+         echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login ${{ secrets.OCIR_HOST }} \
+         -u "${{ secrets.OCI_NAMESPACE }}/${{ secrets.OCI_USERNAME }}" --password-stdin
+
+      - name: Verify OCIR Access
+        run: docker pull ${{ secrets.OCIR_HOST }}/${{ secrets.OCIR_REPO }}:${{ inputs.image_tag }}
+
       - name: Debug OCIR login
         run: |
          echo "🔍 Attempting login to ${{ secrets.OCIR_HOST }}"
