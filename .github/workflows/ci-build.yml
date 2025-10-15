@@ -100,12 +100,15 @@ jobs:
       - name: Install GitHub CLI
         run: sudo apt-get update -y && sudo apt-get install -y gh
 
-      - name: Persist image tag for later workflows
+      - name: Download image tag artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: image-tag
+          path: .
+      - name: Read image tag
         run: |
-         echo "🔐 Storing LAST_IMAGE_TAG for security scan..."
-         gh variable set LAST_IMAGE_TAG --body "$IMAGE_TAG" --repo ${{ github.repository }}
-        env:
-         GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
+         IMAGE_TAG=$(cat image-tag.txt)
+         echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
 
 
 
