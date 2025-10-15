@@ -1,12 +1,28 @@
 name: Security Scan
 
 on:
-  workflow_run:
-    workflows:
-      - "CD - Deploy to OKE (via Bastion)"
-      - "CD-01 - Deploy to OKE (via Bastion)"
-    types:
-      - completed
+  workflow_call:  # 👈 allows reuse from CI/CD workflows
+    inputs:
+      image_tag:
+        description: "Optional image tag (if not using artifact)"
+        required: false
+        type: string
+    secrets:
+      OCIR_HOST:
+        required: true
+      OCIR_REPO:
+        required: true
+      OCI_USERNAME:
+        required: true
+      OCI_AUTH_TOKEN:
+        required: true
+
+  workflow_dispatch:  # 👈 allows manual trigger from Actions tab
+    inputs:
+      image_tag:
+        description: "Optional image tag to scan"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -22,22 +38,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 🔢 Read last built image tag from repo variable
-      - name: Set Image Reference
+      # 📥 Download image tag artifact (if exists)
+      - name: Download image tag artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: image-tag
+          path: .
+        continue-on-error: true
+
+      # 🧠 Resolve image tag (priority: input > artifact > default)
+      - name: Determine Image Tag
         run: |
-          if [ -z "${{ vars.LAST_IMAGE_TAG }}" ]; then
-            echo "❌ No LAST_IMAGE_TAG found — please ensure CI pipeline sets it using 'gh variable set LAST_IMAGE_TAG'."
+          if [ -f "image-tag.txt" ]; then
+            IMAGE_TAG=$(cat image-tag.txt)
+          elif [ -n "${{ inputs.image_tag }}" ]; then
+            IMAGE_TAG="${{ inputs.image_tag }}"
+          else
+            echo "❌ No image tag found — please provide input or upload image-tag artifact."
             exit 1
           fi
-
-          IMAGE_TAG="${{ vars.LAST_IMAGE_TAG }}"
-          IMAGE="${{ secrets.OCIR_REPO }}:${IMAGE_TAG}"
-          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-          echo "🔗 Scanning image: $IMAGE"
+          echo "IMAGE=${{ secrets.OCIR_REPO }}:${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "🔗 Scanning image: ${{ secrets.OCIR_REPO }}:${IMAGE_TAG}"
 
       # 🔐 Login to OCIR
       - name: Login to OCIR
-        run: echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login ${{ secrets.OCIR_HOST }} -u "${{ secrets.OCI_USERNAME }}" --password-stdin
+        run: |
+          echo "${{ secrets.OCI_AUTH_TOKEN }}" | docker login ${{ secrets.OCIR_HOST }} \
+            -u "${{ secrets.OCI_USERNAME }}" --password-stdin
 
       # 🧰 Install Trivy
       - name: Install Trivy
@@ -47,9 +74,9 @@ jobs:
           wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
           echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
           sudo apt-get update -y
-          sudo apt-get install -y trivy jq
+          sudo apt-get install -y trivy
 
-      # 🔍 Run Trivy vulnerability scan
+      # 🔍 Run Trivy scan
       - name: Run Trivy vulnerability scan
         id: trivy
         run: |
@@ -62,23 +89,16 @@ jobs:
                       --severity HIGH,CRITICAL \
                       $IMAGE
 
-          # ✅ Optional enforcement for master branch only
-          if [[ "${{ github.ref_name }}" != "master" ]]; then
-            echo "ℹ️ Skipping vulnerability enforcement for non-master branch: ${{ github.ref_name }}"
-            exit 0
-          fi
-
           CRITICAL_COUNT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-report.json)
           HIGH_COUNT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-report.json)
           echo "CRITICAL vulnerabilities: $CRITICAL_COUNT"
           echo "HIGH vulnerabilities: $HIGH_COUNT"
 
-          MAX_HIGH=10
           if [ "$CRITICAL_COUNT" -gt 0 ]; then
             echo "❌ Policy violation: CRITICAL vulnerabilities found!"
             exit 1
-          elif [ "$HIGH_COUNT" -gt "$MAX_HIGH" ]; then
-            echo "❌ Policy violation: Too many HIGH vulnerabilities ($HIGH_COUNT > $MAX_HIGH)"
+          elif [ "$HIGH_COUNT" -gt 10 ]; then
+            echo "❌ Policy violation: Too many HIGH vulnerabilities ($HIGH_COUNT > 10)"
             exit 1
           else
             echo "✅ Passed: Vulnerability thresholds within acceptable range."
@@ -91,7 +111,7 @@ jobs:
                       --format table \
                       $IMAGE | tee trivy-report.txt
 
-      # 📊 Upload reports
+      # 📊 Upload Trivy Reports
       - name: Upload Trivy Reports
         if: always()
         uses: actions/upload-artifact@v4
